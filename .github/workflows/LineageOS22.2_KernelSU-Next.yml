@@ -99,14 +99,14 @@ jobs:
       if: env.CHECK_IMAGE == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: Image-LOS22.2-Joan_KernelSU-Next_${{ env.KSUVER_1 }}
+        name: Image-LOS22.2-Joan_KernelSU-Next_${{ env.KSUVER }}
         path: kernel_workspace/android-kernel/out/arch/arm64/boot/Image
 
     - name: Upload Joan AnyKernel3 zip
       if: env.CHECK_IMAGE == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: AK3-LOS22.2-Joan_KernelSU-Next_${{ env.KSUVER_1 }}-${{ env.BUILD_TIME }}
+        name: AK3-LOS22.2-Joan_KernelSU-Next_${{ env.KSUVER }}-${{ env.BUILD_TIME }}
         path: kernel_workspace/AnyKernel3/*
 
     - name: Build L-01K kernel with KernelSU Next
