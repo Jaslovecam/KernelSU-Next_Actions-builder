@@ -1,4 +1,4 @@
-name: Build LineageOS 22.1 gta4xl/wifi Kernel with KernelSU-Next
+name: Build LineageOS 22.2 gta4xl/wifi Kernel with KernelSU-Next
 
 on:
   workflow_dispatch:
