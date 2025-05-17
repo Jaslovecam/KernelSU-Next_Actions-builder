@@ -80,9 +80,9 @@ jobs:
       if: env.CHECK_IMAGE == 'true'
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace
-        git clone https://github.com/JacoaFur/AnyKernel3-Fork.git --depth=1 AnyKernel3
+        git clone https://github.com/JacoaFur/AnyKernel3-Fork --depth=1 AnyKernel3
         cp android-kernel/out/arch/arm64/boot/Image AnyKernel3/
-        rm -rf AnyKernel3/.git*
+        rm -rf AnyKernel3/.git* AnyKernel3/README.md
 
     - name: Compress AnyKernel3 folder with Joan Image to zip
       run: |
@@ -132,9 +132,9 @@ jobs:
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace
         rm -rf AnyKernel3
-        git clone https://github.com/JacoaFur/AnyKernel3-Fork.git --depth=1 AnyKernel3
+        git clone https://github.com/JacoaFur/AnyKernel3-Fork --depth=1 AnyKernel3
         cp android-kernel/out/arch/arm64/boot/Image AnyKernel3/
-        rm -rf AnyKernel3/.git*
+        rm -rf AnyKernel3/.git* AnyKernel3/README.md
 
     - name: Compress AnyKernel3 folder with L-01K Image to zip
       run: |
