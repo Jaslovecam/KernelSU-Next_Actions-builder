@@ -84,11 +84,6 @@ jobs:
         cp android-kernel/out/arch/arm64/boot/Image AnyKernel3/
         rm -rf AnyKernel3/.git*
 
-    - name: Compress AnyKernel3 folder with Kernel to zip
-      run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace/AnyKernel3
-        zip -r $GITHUB_WORKSPACE/AK3-LOS22.2-gta4xl_KernelSU-Next_${{ env.KSUVER }}-${{ env.BUILD_TIME }}.zip ./*
-
     - name: Upload gta4xl Image
       if: env.CHECK_IMAGE == 'true'
       uses: actions/upload-artifact@v4
@@ -135,11 +130,6 @@ jobs:
         git clone https://github.com/JacoaFur/AnyKernel3-Fork.git -b gta4xl --depth=1 AnyKernel3
         cp android-kernel/out/arch/arm64/boot/Image AnyKernel3/
         rm -rf AnyKernel3/.git*
-
-    - name: Compress AnyKernel3 folder with Kernel to zip
-      run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace/AnyKernel3
-        zip -r $GITHUB_WORKSPACE/AK3-LOS22.2-gta4xlwifi_KernelSU-Next_${{ env.KSUVER }}-${{ env.BUILD_TIME }}.zip ./*
 
     - name: Upload gta4xlwifi Image
       if: env.CHECK_IMAGE_1 == 'true'

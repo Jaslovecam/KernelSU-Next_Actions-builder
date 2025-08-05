@@ -84,11 +84,6 @@ jobs:
         cp android-kernel/out/arch/arm64/boot/Image AnyKernel3/
         rm -rf AnyKernel3/.git* AnyKernel3/README.md
 
-    - name: Compress AnyKernel3 folder with Joan Image to zip
-      run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace/AnyKernel3
-        zip -r $GITHUB_WORKSPACE/AK3-LOS22.2-Joan_KernelSU-Next_${{ env.KSUVER }}-${{ env.BUILD_TIME }}.zip ./*
-
     - name: Upload Joan Image
       if: env.CHECK_IMAGE == 'true'
       uses: actions/upload-artifact@v4
@@ -135,11 +130,6 @@ jobs:
         git clone https://github.com/JacoaFur/AnyKernel3-Fork --depth=1 AnyKernel3
         cp android-kernel/out/arch/arm64/boot/Image AnyKernel3/
         rm -rf AnyKernel3/.git* AnyKernel3/README.md
-
-    - name: Compress AnyKernel3 folder with L-01K Image to zip
-      run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace/AnyKernel3
-        zip -r $GITHUB_WORKSPACE/AK3-LOS22.2-l01k_KernelSU-Next_${{ env.KSUVER }}-${{ env.BUILD_TIME }}.zip ./*
 
     - name: Upload L-01K Image
       if: env.CHECK_IMAGE_1 == 'true'
