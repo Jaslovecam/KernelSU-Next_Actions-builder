@@ -1,4 +1,4 @@
-name: Build LineageOS 22.2 Joan Kernel with KernelSU-Next (test branch)
+name: Build LineageOS 22.2 Joan Kernel with KernelSU-Next (selinux permissive branch)
 
 on:
   workflow_dispatch:
@@ -40,7 +40,7 @@ jobs:
     - name: Download kernel source
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace
-        git clone --recursive https://github.com/JacoaFur/android_kernel_lge_msm8998.git -b test android-kernel --depth=1
+        git clone --recursive https://github.com/JacoaFur/android_kernel_lge_msm8998.git -b lineage-22.2-permissive android-kernel --depth=1
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel/scripts
         sed -i 's/ -dirty//g' setlocalversion
 
@@ -87,18 +87,18 @@ jobs:
     - name: Compress AnyKernel3 folder with Joan Image to zip
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/AnyKernel3
-        zip -r $GITHUB_WORKSPACE/AK3-LOS22.2-Joan_KernelSU-Next_${{ env.KSUVER }}-${{ env.BUILD_TIME }}.zip ./*
+        zip -r $GITHUB_WORKSPACE/AK3-LOS22.2-Joan_KernelSU-Next_Permissive_${{ env.KSUVER }}-${{ env.BUILD_TIME }}.zip ./*
 
     - name: Upload Joan Image
       if: env.CHECK_IMAGE == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: Image-LOS22.2-Joan_KernelSU-Next_${{ env.KSUVER }}
+        name: Image-LOS22.2-Joan_KernelSU-Next_Permissive_${{ env.KSUVER }}
         path: kernel_workspace/android-kernel/out/arch/arm64/boot/Image
 
     - name: Upload Joan AnyKernel3 zip
       if: env.CHECK_IMAGE == 'true'
       uses: actions/upload-artifact@v4
       with:
-        name: AK3-LOS22.2-Joan_KernelSU-Next_${{ env.KSUVER }}-${{ env.BUILD_TIME }}
+        name: AK3-LOS22.2-Joan_KernelSU-Next_Permissive_${{ env.KSUVER }}-${{ env.BUILD_TIME }}
         path: kernel_workspace/AnyKernel3/*
