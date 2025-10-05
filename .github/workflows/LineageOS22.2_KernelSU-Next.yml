@@ -1,146 +1,156 @@
-name: Build LineageOS 22.2  KernelSU-Next
+name: Build LineageOS 22.2 KernelSU-Next
 
 on:
   workflow_dispatch:
 
 env:
   TZ: America/New_York
+  WORKSPACE: ${{ github.workspace }}
+  KERNEL_DIR: ${{ github.workspace }}/kernel_workspace/android-kernel
+  ANYKERNEL_DIR: ${{ github.workspace }}/kernel_workspace/AnyKernel3
+  CLANG_DIR: ${{ github.workspace }}/kernel_workspace/clang-aosp
+  GCC64_DIR: ${{ github.workspace }}/kernel_workspace/gcc-64
+  GCC32_DIR: ${{ github.workspace }}/kernel_workspace/gcc-32
 
-jobs:
-  build:
-    name: Build Kernel by ${{ github.actor }}
-    runs-on: ubuntu-24.04
-    steps:
+jobs_defaults: &job_defaults
+  runs-on: ubuntu-24.04
+  steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set swap to 10G
       uses: pierotofy/set-swap-space@master
       with:
         swap-size-gb: 10
-    
-    - name: Setup build kernel environment
+
+    - name: Set build variables
       run: |
-        echo "BUILD_TIME=$(TZ=America/New_York date "+%y%m%d")" >> $GITHUB_ENV
-        echo "BUILD_TIME_1=$(TZ=America/New_York date "+%Y-%m-%d")" >> $GITHUB_ENV
+        echo "BUILD_TIME=$(date "+%y%m%d")" >> $GITHUB_ENV
+        echo "BUILD_TIME_1=$(date "+%Y-%m-%d")" >> $GITHUB_ENV
+
+    - name: Install build dependencies
+      run: |
         sudo apt-get update
-        sudo apt-get install git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev g++-multilib bzip2 libbz2-dev liblz4-tool make squashfs-tools dpkg-dev libssl-dev python3 bc libc6-dev-i386 libncurses5-dev
-        mkdir -p $GITHUB_WORKSPACE/kernel_workspace
-    
+        sudo apt-get install -y git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev g++-multilib bzip2 libbz2-dev liblz4-tool make squashfs-tools dpkg-dev libssl-dev python3 bc libc6-dev-i386 libncurses5-dev
+
+    - name: Cache toolchains
+      uses: actions/cache@v3
+      with:
+        path: |
+          ${{ env.CLANG_DIR }}
+          ${{ env.GCC64_DIR }}
+          ${{ env.GCC32_DIR }}
+        key: ${{ runner.os }}-toolchains
+
     - name: Download Clang from aosp
+      if: steps.cache-toolchains.outputs.cache-hit != 'true'
       run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace
-        git clone https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r487747c clang-aosp
-    
+        mkdir -p ${{ env.CLANG_DIR }}
+        git clone https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r487747c ${{ env.CLANG_DIR }}
+
     - name: Download Gcc from aosp
+      if: steps.cache-toolchains.outputs.cache-hit != 'true'
       run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace
-          git clone https://gitlab.com/crdroidandroid/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc-64
-          git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 gcc-32
-    
+        mkdir -p ${{ env.GCC64_DIR }} ${{ env.GCC32_DIR }}
+        git clone https://gitlab.com/crdroidandroid/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 ${{ env.GCC64_DIR }}
+        git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 ${{ env.GCC32_DIR }}
+
+    - name: Cache kernel source
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.KERNEL_DIR }}
+        key: ${{ runner.os }}-kernel-source-${{ github.sha }}
+
     - name: Download kernel source
+      if: steps.cache-kernel.outputs.cache-hit != 'true'
       run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace
-        git clone --recursive https://github.com/Jaslovecam/android_kernel_oneplus_sm8650.git -b varuna android-kernel --depth=1
-        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel/scripts
-        sed -i 's/ -dirty//g' setlocalversion
+        mkdir -p ${{ env.KERNEL_DIR }}
+        git clone --recursive https://github.com/Jaslovecam/android_kernel_oneplus_sm8650.git -b varuna ${{ env.KERNEL_DIR }} --depth=1
+        sed -i 's/ -dirty//g' ${{ env.KERNEL_DIR }}/scripts/setlocalversion
 
     - name: Setup KernelSU Next
       run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        cd ${{ env.KERNEL_DIR }}
         rm -rf KernelSU-Next
         curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
         KSU_VERSION=$(cd KernelSU-Next && expr $(/usr/bin/git rev-list --count HEAD) + 10200)
         echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
 
-    - name: Build Joan kernel with KernelSU Next
+    - name: Build kernel ${{ matrix.device.name }}
       run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        cd ${{ env.KERNEL_DIR }}
         export ARCH=arm64
         export SUBARCH=arm
-        export PATH=$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/bin:$GITHUB_WORKSPACE/kernel_workspace/gcc-64/bin:$GITHUB_WORKSPACE/kernel_workspace/gcc-32/bin:$PATH
+        export PATH=${{ env.CLANG_DIR }}/bin:${{ env.GCC64_DIR }}/bin:${{ env.GCC32_DIR }}/bin:$PATH
         export KBUILD_BUILD_HOST=Github-Action
         export KBUILD_BUILD_USER=$(echo ${{ github.actor }} | tr A-Z a-z)
         BA_CMD="CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-"
         EX_CMD="LD=ld.lld LLVM=1 LLVM_IAS=1"
-        DEFCONFIG="lineageos_joan_defconfig"
+        DEFCONFIG="${{ matrix.device.config }}"
+        
+        # Clean previous build
+        rm -rf out
+        
         make O=out ARCH=arm64 CC=clang $BA_CMD $EX_CMD $DEFCONFIG
         make -j$(nproc --all) O=out ARCH=arm64 CC=clang $BA_CMD $EX_CMD
 
-    - name: Check kernel output files for Joan Image
+    - name: Check kernel output files
       run: |
-       cd $GITHUB_WORKSPACE/kernel_workspace
-       if [ -f android-kernel/out/arch/arm64/boot/Image ]; then
-           echo "CHECK_IMAGE=true" >> $GITHUB_ENV
-       else
-           echo "Kernel output file is empty"
-           exit 1
-       fi
+        if [ -f ${{ env.KERNEL_DIR }}/out/arch/arm64/boot/Image ]; then
+          echo "Kernel image for ${{ matrix.device.name }} built successfully"
+        else
+          echo "Kernel output file for ${{ matrix.device.name }} is missing"
+          exit 1
+        fi
 
-    - name: Make AnyKernel3 with Joan Image
-      if: env.CHECK_IMAGE == 'true'
+    - name: Make AnyKernel3 with ${{ matrix.device.name }} Image
       run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace
-        git clone https://github.com/JacoaFur/AnyKernel3-Fork --depth=1 AnyKernel3
-        cp android-kernel/out/arch/arm64/boot/Image AnyKernel3/
-        rm -rf AnyKernel3/.git* AnyKernel3/README.md
+        rm -rf ${{ env.ANYKERNEL_DIR }}
+        git clone https://github.com/JacoaFur/AnyKernel3-Fork --depth=1 ${{ env.ANYKERNEL_DIR }}
+        cp ${{ env.KERNEL_DIR }}/out/arch/arm64/boot/Image ${{ env.ANYKERNEL_DIR }}/
+        rm -rf ${{ env.ANYKERNEL_DIR }}/.git* ${{ env.ANYKERNEL_DIR }}/README.md
 
-    - name: Upload Joan Image
-      if: env.CHECK_IMAGE == 'true'
+    - name: Upload ${{ matrix.device.name }} Image
       uses: actions/upload-artifact@v4
       with:
-        name: Image-LOS22.2-Joan_KernelSU-Next_${{ env.KSUVER }}
-        path: kernel_workspace/android-kernel/out/arch/arm64/boot/Image
+        name: Image-LOS22.2-${{ matrix.device.name }}_KernelSU-Next_${{ env.KSUVER }}
+        path: ${{ env.KERNEL_DIR }}/out/arch/arm64/boot/Image
 
-    - name: Upload Joan AnyKernel3 zip
-      if: env.CHECK_IMAGE == 'true'
+    - name: Upload ${{ matrix.device.name }} AnyKernel3 zip
       uses: actions/upload-artifact@v4
       with:
-        name: AK3-LOS22.2-Joan_KernelSU-Next_${{ env.KSUVER }}-${{ env.BUILD_TIME }}
-        path: kernel_workspace/AnyKernel3/*
+        name: AK3-LOS22.2-${{ matrix.device.name }}_KernelSU-Next_${{ env.KSUVER }}-${{ env.BUILD_TIME }}
+        path: ${{ env.ANYKERNEL_DIR }}/*
 
-    - name: Build L-01K kernel with KernelSU Next
+    - name: Clean up to save space
       run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        export ARCH=arm64
-        export SUBARCH=arm
-        export PATH=$GITHUB_WORKSPACE/kernel_workspace/clang-aosp/bin:$GITHUB_WORKSPACE/kernel_workspace/gcc-64/bin:$GITHUB_WORKSPACE/kernel_workspace/gcc-32/bin:$PATH
-        export KBUILD_BUILD_HOST=Github-Action
-        export KBUILD_BUILD_USER=$(echo ${{ github.actor }} | tr A-Z a-z)
-        BA_CMD="CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-"
-        EX_CMD="LD=ld.lld LLVM=1 LLVM_IAS=1"
-        DEFCONFIG="lineageos_l01k_defconfig"
-        make O=out ARCH=arm64 CC=clang $BA_CMD $EX_CMD $DEFCONFIG
-        make -j$(nproc --all) O=out ARCH=arm64 CC=clang $BA_CMD $EX_CMD
+        rm -rf ${{ env.KERNEL_DIR }}/out
 
-    - name: Check kernel output files for L-01K Image
-      run: |
-       cd $GITHUB_WORKSPACE/kernel_workspace
-       if [ -f android-kernel/out/arch/arm64/boot/Image ]; then
-           echo "CHECK_IMAGE_1=true" >> $GITHUB_ENV
-       else
-           echo "Kernel output file is empty"
-           exit 1
-       fi
+jobs:
+  build-kernels:
+    <<: *job_defaults
+    strategy:
+      matrix:
+        device:
+          - name: Joan
+            config: lineageos_joan_defconfig
+          - name: L-01K
+            config: lineageos_l01k_defconfig
 
-    - name: Make AnyKernel3 with L-01K Image
-      if: env.CHECK_IMAGE_1 == 'true'
-      run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace
-        rm -rf AnyKernel3
-        git clone https://github.com/JacoaFur/AnyKernel3-Fork --depth=1 AnyKernel3
-        cp android-kernel/out/arch/arm64/boot/Image AnyKernel3/
-        rm -rf AnyKernel3/.git* AnyKernel3/README.md
+  create-release:
+    needs: build-kernels
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
 
-    - name: Upload L-01K Image
-      if: env.CHECK_IMAGE_1 == 'true'
-      uses: actions/upload-artifact@v4
-      with:
-        name: Image-LOS22.2-l01k_KernelSU-Next_${{ env.KSUVER }}
-        path: kernel_workspace/android-kernel/out/arch/arm64/boot/Image
+      - name: Display structure of downloaded files
+        run: ls -R
 
-    - name: Upload L-01K AnyKernel3 zip
-      if: env.CHECK_IMAGE_1 == 'true'
-      uses: actions/upload-artifact@v4
-      with:
-        name: AK3-LOS22.2-l01k_KernelSU-Next_${{ env.KSUVER }}-${{ env.BUILD_TIME }}
-        path: kernel_workspace/AnyKernel3/*
+      - name: Create release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: KernelSU-Next Build ${{ env.BUILD_TIME_1 }}
+          tag_name: build-${{ env.BUILD_TIME }}
+          files: |
+            AK3-LOS22.2-Joan_KernelSU-Next_${{ env.KSUVER }}-${{ env.BUILD_TIME }}/*
+            AK3-LOS22.2-L-01K_KernelSU-Next_${{ env.KSUVER }}-${{ env.BUILD_TIME }}/*
