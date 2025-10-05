@@ -12,122 +12,10 @@ env:
   GCC64_DIR: ${{ github.workspace }}/kernel_workspace/gcc-64
   GCC32_DIR: ${{ github.workspace }}/kernel_workspace/gcc-32
 
-jobs_defaults: &job_defaults
-  runs-on: ubuntu-24.04
-  steps:
-    - uses: actions/checkout@v4
-
-    - name: Set swap to 10G
-      uses: pierotofy/set-swap-space@master
-      with:
-        swap-size-gb: 10
-
-    - name: Set build variables
-      run: |
-        echo "BUILD_TIME=$(date "+%y%m%d")" >> $GITHUB_ENV
-        echo "BUILD_TIME_1=$(date "+%Y-%m-%d")" >> $GITHUB_ENV
-
-    - name: Install build dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev g++-multilib bzip2 libbz2-dev liblz4-tool make squashfs-tools dpkg-dev libssl-dev python3 bc libc6-dev-i386 libncurses5-dev
-
-    - name: Cache toolchains
-      uses: actions/cache@v3
-      with:
-        path: |
-          ${{ env.CLANG_DIR }}
-          ${{ env.GCC64_DIR }}
-          ${{ env.GCC32_DIR }}
-        key: ${{ runner.os }}-toolchains
-
-    - name: Download Clang from aosp
-      if: steps.cache-toolchains.outputs.cache-hit != 'true'
-      run: |
-        mkdir -p ${{ env.CLANG_DIR }}
-        git clone https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r487747c ${{ env.CLANG_DIR }}
-
-    - name: Download Gcc from aosp
-      if: steps.cache-toolchains.outputs.cache-hit != 'true'
-      run: |
-        mkdir -p ${{ env.GCC64_DIR }} ${{ env.GCC32_DIR }}
-        git clone https://gitlab.com/crdroidandroid/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 ${{ env.GCC64_DIR }}
-        git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 ${{ env.GCC32_DIR }}
-
-    - name: Cache kernel source
-      uses: actions/cache@v3
-      with:
-        path: ${{ env.KERNEL_DIR }}
-        key: ${{ runner.os }}-kernel-source-${{ github.sha }}
-
-    - name: Download kernel source
-      if: steps.cache-kernel.outputs.cache-hit != 'true'
-      run: |
-        mkdir -p ${{ env.KERNEL_DIR }}
-        git clone --recursive https://github.com/Jaslovecam/android_kernel_oneplus_sm8650.git -b varuna ${{ env.KERNEL_DIR }} --depth=1
-        sed -i 's/ -dirty//g' ${{ env.KERNEL_DIR }}/scripts/setlocalversion
-
-    - name: Setup KernelSU Next
-      run: |
-        cd ${{ env.KERNEL_DIR }}
-        rm -rf KernelSU-Next
-        curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
-        KSU_VERSION=$(cd KernelSU-Next && expr $(/usr/bin/git rev-list --count HEAD) + 10200)
-        echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-
-    - name: Build kernel ${{ matrix.device.name }}
-      run: |
-        cd ${{ env.KERNEL_DIR }}
-        export ARCH=arm64
-        export SUBARCH=arm
-        export PATH=${{ env.CLANG_DIR }}/bin:${{ env.GCC64_DIR }}/bin:${{ env.GCC32_DIR }}/bin:$PATH
-        export KBUILD_BUILD_HOST=Github-Action
-        export KBUILD_BUILD_USER=$(echo ${{ github.actor }} | tr A-Z a-z)
-        BA_CMD="CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-"
-        EX_CMD="LD=ld.lld LLVM=1 LLVM_IAS=1"
-        DEFCONFIG="${{ matrix.device.config }}"
-        
-        # Clean previous build
-        rm -rf out
-        
-        make O=out ARCH=arm64 CC=clang $BA_CMD $EX_CMD $DEFCONFIG
-        make -j$(nproc --all) O=out ARCH=arm64 CC=clang $BA_CMD $EX_CMD
-
-    - name: Check kernel output files
-      run: |
-        if [ -f ${{ env.KERNEL_DIR }}/out/arch/arm64/boot/Image ]; then
-          echo "Kernel image for ${{ matrix.device.name }} built successfully"
-        else
-          echo "Kernel output file for ${{ matrix.device.name }} is missing"
-          exit 1
-        fi
-
-    - name: Make AnyKernel3 with ${{ matrix.device.name }} Image
-      run: |
-        rm -rf ${{ env.ANYKERNEL_DIR }}
-        git clone https://github.com/JacoaFur/AnyKernel3-Fork --depth=1 ${{ env.ANYKERNEL_DIR }}
-        cp ${{ env.KERNEL_DIR }}/out/arch/arm64/boot/Image ${{ env.ANYKERNEL_DIR }}/
-        rm -rf ${{ env.ANYKERNEL_DIR }}/.git* ${{ env.ANYKERNEL_DIR }}/README.md
-
-    - name: Upload ${{ matrix.device.name }} Image
-      uses: actions/upload-artifact@v4
-      with:
-        name: Image-LOS22.2-${{ matrix.device.name }}_KernelSU-Next_${{ env.KSUVER }}
-        path: ${{ env.KERNEL_DIR }}/out/arch/arm64/boot/Image
-
-    - name: Upload ${{ matrix.device.name }} AnyKernel3 zip
-      uses: actions/upload-artifact@v4
-      with:
-        name: AK3-LOS22.2-${{ matrix.device.name }}_KernelSU-Next_${{ env.KSUVER }}-${{ env.BUILD_TIME }}
-        path: ${{ env.ANYKERNEL_DIR }}/*
-
-    - name: Clean up to save space
-      run: |
-        rm -rf ${{ env.KERNEL_DIR }}/out
-
 jobs:
   build-kernels:
-    <<: *job_defaults
+    name: Build Kernel ${{ matrix.device.name }}
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         device:
@@ -135,6 +23,118 @@ jobs:
             config: lineageos_joan_defconfig
           - name: L-01K
             config: lineageos_l01k_defconfig
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set swap to 10G
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 10
+
+      - name: Set build variables
+        run: |
+          echo "BUILD_TIME=$(date "+%y%m%d")" >> $GITHUB_ENV
+          echo "BUILD_TIME_1=$(date "+%Y-%m-%d")" >> $GITHUB_ENV
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev g++-multilib bzip2 libbz2-dev liblz4-tool make squashfs-tools dpkg-dev libssl-dev python3 bc libc6-dev-i386 libncurses5-dev
+
+      - name: Cache toolchains
+        id: cache-toolchains
+        uses: actions/cache@v3
+        with:
+          path: |
+            ${{ env.CLANG_DIR }}
+            ${{ env.GCC64_DIR }}
+            ${{ env.GCC32_DIR }}
+          key: ${{ runner.os }}-toolchains
+
+      - name: Download Clang from aosp
+        if: steps.cache-toolchains.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ${{ env.CLANG_DIR }}
+          git clone https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r487747c ${{ env.CLANG_DIR }}
+
+      - name: Download Gcc from aosp
+        if: steps.cache-toolchains.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ${{ env.GCC64_DIR }} ${{ env.GCC32_DIR }}
+          git clone https://gitlab.com/crdroidandroid/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 ${{ env.GCC64_DIR }}
+          git clone https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 ${{ env.GCC32_DIR }}
+
+      - name: Cache kernel source
+        id: cache-kernel
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.KERNEL_DIR }}
+          key: ${{ runner.os }}-kernel-source-${{ github.sha }}
+
+      - name: Download kernel source
+        if: steps.cache-kernel.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ${{ env.KERNEL_DIR }}
+          git clone --recursive https://github.com/Jaslovecam/android_kernel_oneplus_sm8650.git -b varuna ${{ env.KERNEL_DIR }} --depth=1
+          sed -i 's/ -dirty//g' ${{ env.KERNEL_DIR }}/scripts/setlocalversion
+
+      - name: Setup KernelSU Next
+        run: |
+          cd ${{ env.KERNEL_DIR }}
+          rm -rf KernelSU-Next
+          curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+          KSU_VERSION=$(cd KernelSU-Next && expr $(/usr/bin/git rev-list --count HEAD) + 10200)
+          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
+
+      - name: Build kernel ${{ matrix.device.name }}
+        run: |
+          cd ${{ env.KERNEL_DIR }}
+          export ARCH=arm64
+          export SUBARCH=arm
+          export PATH=${{ env.CLANG_DIR }}/bin:${{ env.GCC64_DIR }}/bin:${{ env.GCC32_DIR }}/bin:$PATH
+          export KBUILD_BUILD_HOST=Github-Action
+          export KBUILD_BUILD_USER=$(echo ${{ github.actor }} | tr A-Z a-z)
+          BA_CMD="CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-"
+          EX_CMD="LD=ld.lld LLVM=1 LLVM_IAS=1"
+          DEFCONFIG="${{ matrix.device.config }}"
+          
+          # Clean previous build
+          rm -rf out
+          
+          make O=out ARCH=arm64 CC=clang $BA_CMD $EX_CMD $DEFCONFIG
+          make -j$(nproc --all) O=out ARCH=arm64 CC=clang $BA_CMD $EX_CMD
+
+      - name: Check kernel output files
+        run: |
+          if [ -f ${{ env.KERNEL_DIR }}/out/arch/arm64/boot/Image ]; then
+            echo "Kernel image for ${{ matrix.device.name }} built successfully"
+          else
+            echo "Kernel output file for ${{ matrix.device.name }} is missing"
+            exit 1
+          fi
+
+      - name: Make AnyKernel3 with ${{ matrix.device.name }} Image
+        run: |
+          rm -rf ${{ env.ANYKERNEL_DIR }}
+          git clone https://github.com/JacoaFur/AnyKernel3-Fork --depth=1 ${{ env.ANYKERNEL_DIR }}
+          cp ${{ env.KERNEL_DIR }}/out/arch/arm64/boot/Image ${{ env.ANYKERNEL_DIR }}/
+          rm -rf ${{ env.ANYKERNEL_DIR }}/.git* ${{ env.ANYKERNEL_DIR }}/README.md
+
+      - name: Upload ${{ matrix.device.name }} Image
+        uses: actions/upload-artifact@v4
+        with:
+          name: Image-LOS22.2-${{ matrix.device.name }}_KernelSU-Next_${{ env.KSUVER }}
+          path: ${{ env.KERNEL_DIR }}/out/arch/arm64/boot/Image
+
+      - name: Upload ${{ matrix.device.name }} AnyKernel3 zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: AK3-LOS22.2-${{ matrix.device.name }}_KernelSU-Next_${{ env.KSUVER }}-${{ env.BUILD_TIME }}
+          path: ${{ env.ANYKERNEL_DIR }}/*
+
+      - name: Clean up to save space
+        run: |
+          rm -rf ${{ env.KERNEL_DIR }}/out
 
   create-release:
     needs: build-kernels
